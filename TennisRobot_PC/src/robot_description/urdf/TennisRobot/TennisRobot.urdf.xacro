@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="TennisRobot">
+
+    <xacro:include filename="$(find robot_description)/urdf/TennisRobot/base.urdf.xacro"/>
+
+    <xacro:include filename="$(find robot_description)/urdf/TennisRobot/sensor/imu.urdf.xacro"/>
+    <xacro:include filename="$(find robot_description)/urdf/TennisRobot/sensor/camera.urdf.xacro"/>
+    <xacro:include filename="$(find robot_description)/urdf/TennisRobot/sensor/laser.urdf.xacro"/>
+
+    <xacro:include filename="$(find robot_description)/urdf/TennisRobot/actuator/wheel.urdf.xacro"/>
+    <xacro:include filename="$(find robot_description)/urdf/TennisRobot/actuator/caster.urdf.xacro"/>
+
+    <!-- <xacro:include filename="$(find robot_description)/urdf/tennis_robot/plugins/gazebo_control_plugin.xacro"/> -->
+    <!-- <xacro:include filename="$(find robot_description)/urdf/tennis_robot/plugins/gazebo_sensor_plugin.xacro"/> -->
+    <!-- <xacro:include filename="$(find robot_description)/urdf/tennis_robot/tennis_robot.ros2_control.xacro"/> -->
+
+    <xacro:base_xacro />
+
+    <xacro:imu_xacro xyz="00.14 0 0.075"/>
+    <xacro:camera_xacro xyz="0.26 0 0.075"/>
+    <xacro:laser_xacro xyz="0.14 0 0.095"/>
+
+    <xacro:wheel_xacro wheel_name= "left_wheel" xyz="0.14 0.134 -0.0425"/>
+    <xacro:wheel_xacro wheel_name= "right_wheel" xyz="0.14 -0.134 -0.0425"/>
+    <xacro:caster_xacro caster_name= "left_caster" xyz="-0.228 0.103 -0.069"/>
+    <xacro:caster_xacro caster_name= "right_caster" xyz="-0.228 -0.103 -0.069"/>
+
+    <!-- <xacro:gazebo_control_plugin /> -->
+    <!-- <xacro:gazebo_sensor_plugin /> -->
+    <!-- <xacro:tennis_robot_ros2_control /> -->
+
+</robot>
