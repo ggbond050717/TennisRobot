@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-本项目是一个基于 ROS2 的网球自主拾取机器人系统。机器人搭载 Jetson Nano 作为下位机，运行 NVIDIA CSI 摄像头、YDLIDAR 激光雷达、IMU、电机驱动等硬件模块及 YOLOv5 网球检测算法；PC 端作为上位机，运行 SLAM 建图、路径规划、导航与可视化界面。通过 WiFi/以太网实现双机 ROS2 DDS 通信。
+本项目是一个基于 ROS2 的网球自主拾取机器人系统。采用三层架构：STM32F103 作为底层电机驱动板，负责 PWM 电机控制、编码器采集与 PID 闭环控制；Jetson Nano 作为中层下位机，运行 NVIDIA CSI 摄像头、YDLIDAR 激光雷达、IMU 等传感器驱动及 YOLOv5 网球检测算法；PC 端作为上层上位机，运行 SLAM 建图、路径规划、导航与可视化界面。Jetson 与 PC 通过 WiFi/以太网实现 ROS2 DDS 通信，Jetson 与 STM32 通过 UART 串口进行自定义协议通信。
 
 ### 主要功能
 
@@ -29,10 +29,10 @@ TennisRobot/
 │       ├── slam_pkg/            # Cartographer SLAM 建图
 │       └── robot_navigation2/   # Nav2 自主导航（AMCL + 路径规划 + 避障）
 │
-├── TennisRobot_ws/          # Jetson 端（下位机）ROS2 Foxy 工作空间
+├── TennisRobot_ws/          # Jetson 端（中层下位机）ROS2 Foxy 工作空间
 │   └── src/
 │       ├── msg_interfaces/      # 自定义 ROS2 消息定义（与 PC 端一致）
-│       ├── car_pkg/             # 电机驱动（串口通信）、里程计（diff_tf）、键盘遥控
+│       ├── car_pkg/             # 电机驱动（串口通信 STM32）、里程计（diff_tf）
 │       ├── car_launch/          # 启动文件 + EKF 配置
 │       ├── imu_pkg/             # IMU 传感器驱动（串口）
 │       ├── camera_pkg/          # CSI 摄像头驱动（GStreamer）
@@ -40,39 +40,48 @@ TennisRobot/
 │       ├── yolov5_pkg/          # YOLOv5 网球检测（GPU 推理）
 │       └── robot_description/   # 机器人 URDF 模型
 │
+├── stm32/                    # STM32 端（底层下位机）电机驱动固件
+│   ├── Application/             # 应用层（OS 调度、GUI 显示）
+│   ├── Middleware/              # 中间件（PID 控制、串口协议）
+│   ├── Hardware/                # 硬件抽象层（电机 PWM、编码器、ADC、LCD）
+│   └── Core/                    # STM32 HAL 库配置（CubeMX 生成）
+│
 └── README.md
 ```
 
-### 系统架构图
+### 三层架构图
 
 ```
-[CSI 摄像头] ──→ camera_pkg ──→ /camera/image_raw (JPEG)
-        │
-        └──→ yolov5_pkg ──→ /detection/results (DetectResult)
-                    └──→ /detection/visualization (ImageResult + 网球框)
-
-[电机驱动板] ←── car_pkg/car_serial (/dev/car_serial) ──→ /cmd_vel
-                    └──→ /wheelspeed (编码器数据)
-                    └──→ diff_tf ──→ TF: odom → base_link, /odom
-
-[IMU] ──→ imu_pkg (/dev/imu) ──→ /imu_data
-
-[YDLIDAR] ──→ ydlidar_ros2_driver (/dev/ydlidar) ──→ /scan
-
-        ┌──────────────────────────────────┐
-        │     ROS2 DDS (WiFi/以太网)       │
-        │     RMW: CycloneDDS              │
-        │     ROS_DOMAIN_ID: 28            │
-        └──────────────────────────────────┘
-                    │
-             ┌─────┴─────┐
-             │    PC 端    │
-             ├────────────┤
-             │ camera_pkg │──→ 显示检测画面
-             │ car_control│──→ 键盘遥控 → /cmd_vel
-             │ slam_pkg   │──→ Cartographer SLAM
-             │ nav2       │──→ AMCL + 路径规划
-             └────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         PC 端（上位机）                          │
+│  camera_pkg: 显示检测画面                                        │
+│  car_control: 键盘遥控 → /cmd_vel                                │
+│  slam_pkg: Cartographer SLAM 建图                                │
+│  robot_navigation2: AMCL 定位 + Nav2 路径规划                     │
+└────────────┬────────────────────────────────────────────────────┘
+             │  ROS2 DDS (WiFi/以太网, CycloneDDS, Domain 28)
+             │
+┌────────────▼────────────────────────────────────────────────────┐
+│                      Jetson 端（中层下位机）                      │
+│  camera_pkg: CSI 摄像头 → /camera/image_raw (JPEG)              │
+│  yolov5_pkg: YOLOv5 网球检测 GPU 推理                             │
+│  ydlidar_ros2_driver: 激光雷达 → /scan                           │
+│  imu_pkg: 9轴IMU → /imu_data                                    │
+│  car_pkg/car_serial: 串口通信 STM32 ←→ /cmd_vel, /wheelspeed    │
+│  car_pkg/diff_tf: 编码器 → 里程计 TF: odom → base_link           │
+└────────────┬────────────────────────────────────────────────────┘
+             │  UART Serial (115200 8N1, /dev/car_serial → ttyTHS1)
+             │  自定义12字节二进制协议: 0xAA55 + 左右轮速 + XOR校验
+             │
+┌────────────▼────────────────────────────────────────────────────┐
+│                      STM32 端（底层下位机）                       │
+│  STM32F103RCT6 (Cortex-M3, 72MHz)                               │
+│  PID 闭环控制: Kp=30, Ki=0.1, Kd=300, 10ms 控制周期              │
+│  3路电机 PWM: 左轮/右轮/拾球滚轮 (10kHz, TIM1+TIM4)              │
+│  4路编码器: 左轮/右轮/滚轮/旋钮      (TIM2+TIM5+TIM3+TIM8)       │
+│  ADC 采样: 电池电压/电流/功率       (ADC1 + DMA)                 │
+│  2.5寸 LCD 显示: ST7789V            (SPI2 + DMA)                │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### TF 坐标树
@@ -81,6 +90,86 @@ TennisRobot/
 map ──→ odom ──→ base_link ──┬── imu_link
                               ├── laser_link (YDLIDAR)
                               └── camera_link
+```
+
+---
+
+## STM32 下位机详解
+
+### 硬件参数
+
+| 项目 | 参数 |
+|------|------|
+| 主控芯片 | STM32F103RCT6 (Cortex-M3, 72MHz, 256KB Flash, 48KB RAM) |
+| 电机数 | 3 路（左轮、右轮、拾球滚轮） |
+| PWM 频率 | 10kHz (TIM1 CH1/CH4, TIM4 CH1-4) |
+| 编码器数 | 4 路（左轮 TIM2, 滚轮 TIM3, 右轮 TIM5, 旋钮 TIM8) |
+| 控制周期 | 10ms (TIM7 中断) |
+| 通信接口 | USART2, 115200bps, 8N1 |
+| 显示 | 2.5寸 LCD (ST7789V, SPI2 + DMA) |
+| 采样 | ADC1: 电池电压/电流/功率 (10x 过采样) |
+
+### STM32 软件架构
+
+```
+Application/
+ ├── OS/os.[ch]      # 主调度器（5状态轮询 + TIM7中断）
+ └── GUI/GUI.[ch]    # LCD 界面（电压/电流/功率显示）
+
+Middleware/
+ ├── PID/pid.[ch]    # PID 控制器（Kp=30, Ki=0.1, Kd=300）
+ └── Serial/serial.[ch]  # Jetson 通信协议（12字节二进制包）
+
+Hardware/
+ ├── Motor/Motor.[ch]    # H桥PWM电机驱动 + 编码器初始化
+ ├── ADC_cs/ADC_cs.[ch]  # ADC 采样 + 自动校准（2.5V参考）
+ ├── LCD/LCD_init.[ch]   # ST7789V 驱动
+ ├── LCD/LCD_dma.[ch]    # DMA 图形缓冲（38400B 帧缓冲）
+ └── KeyPad/KeyPad.[ch]  # 4 按键检测（去抖处理）
+
+Core/               # STM32CubeMX 生成的 HAL 配置
+ ├── Src/main.c          # 主入口
+ ├── Src/tim.c           # 定时器（PWM/编码器/系统时钟）
+ ├── Src/usart.c         # 串口（USART1 调试, USART2 通信）
+ ├── Src/adc.c           # ADC 配置
+ ├── Src/spi.c           # SPI2 LCD 配置
+ └── Src/gpio.c          # GPIO（按键/复位/命令控制）
+```
+
+### Jetson ↔ STM32 通信协议
+
+自定义 12 字节二进制包，UART 115200bps 8N1：
+
+```
+┌───────┬───────┬────────┬────────────┬─────────────┬──────────┐
+│ Offset │ Size  │ 字段   │ 内容       │ 说明        │
+├───────┼───────┼────────┼────────────┼─────────────┤
+│  0    │  2    │ 帧头   │ 0xAA 0x55  │ 同步字       │
+│  2    │  1    │ 长度   │ 0x09       │ 数据长度      │
+│  3    │  4    │ 左轮   │ int32      │ 目标速度/编码器反馈 │
+│  7    │  4    │ 右轮   │ int32      │ 目标速度/编码器反馈 │
+│ 11    │  1    │ 校验   │ XOR        │ Byte2~10 异或  │
+└───────┴───────┴────────┴────────────┴─────────────┘
+```
+
+- **下行** (Jetson→STM32)：目标左右轮速度，DMA 乒乓缓冲接收
+- **上行** (STM32→Jetson)：每 100ms 反馈累积编码器脉冲数
+
+### PID 控制流程
+
+```
+目标速度(Jetson) ──→ UART 解析 ──→ os.target_LeftSpeed
+                                         │
+                              ┌──────────▼──────────┐
+                              │  TIM7 ISR (10ms)    │
+                              │  读取编码器计数器     │
+                              │  计算实际速度         │
+                              │  PID 计算 PWM 输出   │
+                              │  Motor_PWM() 驱动H桥 │
+                              │  累积编码器值         │
+                              └─────────────────────┘
+                                         │
+每100ms ──→ serial_communication() ──→ Jetson 里程计
 ```
 
 ---

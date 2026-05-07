@@ -5,3 +5,15 @@ __pycache__/
 *.pyc
 *.pyo
 .ros/
+
+# STM32 build artifacts
+stm32/Listings/
+stm32/Objects/
+*.o
+*.d
+*.crf
+*.htm
+*.dep
+*.bak
+*.axf
+*.hex
