@@ -59,7 +59,7 @@ TennisRobot/
 │  slam_pkg: Cartographer SLAM 建图                                │
 │  robot_navigation2: AMCL 定位 + Nav2 路径规划                     │
 └────────────┬────────────────────────────────────────────────────┘
-             │  ROS2 DDS (WiFi/以太网, CycloneDDS, Domain 28)
+             │  ROS2 DDS (WiFi/以太网, Fast-DDS, Domain 28)
              │
 ┌────────────▼────────────────────────────────────────────────────┐
 │                      Jetson 端（中层下位机）                      │
@@ -183,11 +183,7 @@ Core/               # STM32CubeMX 生成的 HAL 配置
 
 ### 关键依赖
 
-- **两台机器都需安装：**
-  ```bash
-  # CycloneDDS（跨版本兼容性好的 RMW 实现）
-  sudo apt install ros-${ROS_DISTRO}-rmw-cyclonedds-cpp
-  ```
+- **两台机器都需使用 Fast-DDS（ROS2 默认 RMW，无需额外安装）**
 
 - **PC 端额外安装：**
   ```bash
@@ -215,23 +211,8 @@ Core/               # STM32CubeMX 生成的 HAL 配置
 两台机器的 `~/.bashrc` 末尾添加：
 
 ```bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export ROS_DOMAIN_ID=28
-export CYCLONEDDS_URI=file://$HOME/cyclonedds.xml
-```
-
-两台机器的 `~/cyclonedds.xml`：
-
-```xml
-<?xml version="1.0" encoding="UTF-8" ?>
-<CycloneDDS xmlns="https://cdds.io/config">
-  <Domain id="any">
-    <General>
-      <AllowMulticast>true</AllowMulticast>
-      <MaxMessageSize>65536</MaxMessageSize>
-    </General>
-  </Domain>
-</CycloneDDS>
 ```
 
 ### 2. 编译工作空间
